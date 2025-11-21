@@ -13,7 +13,7 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# NILAI SUDAH DIMASUKKAN (TIDAK PERLU DIUBAH LAGI)
+# NILAI KONFIGURASI ANDA (SUDAH DIMASUKKAN)
 TOKEN = "8312452980:AAG4od8CYHuUgvs6M7UryWx8gCkXTcDsXMk" 
 TARGET_CHAT_ID = "7038651668" 
 
@@ -26,7 +26,7 @@ DOMAINS_TO_MONITOR = [
     "aksesbatikslot.info",
 ]
 
-# Kata kunci yang menandakan pemblokiran
+# Kata kunci yang menandakan pemblokiran (Web Scraping)
 BLOCKING_KEYWORDS = [
     "internet positif", 
     "situs diblokir", 
@@ -35,37 +35,56 @@ BLOCKING_KEYWORDS = [
     "trustpositif"
 ]
 
-# --- Fungsi Pengecekan Akurat (Web Scraping) ---
+# IP Pemblokiran Umum di Indonesia (Deteksi Akurat)
+BLOCKING_IPS = [
+    '103.1.208.57',  # IP Nawala / TrustPositif lama
+    '104.244.48.91', # Salah satu IP umum TrustPositif
+    # Anda bisa tambahkan IP pemblokiran umum lainnya di sini
+]
+
+
+# --- Fungsi Pengecekan Akurat (Deteksi IP & Web Scraping) ---
 
 def check_blocking_status(domain):
-    """Mengecek status domain dengan mencoba mengakses dan menganalisis konten halaman."""
+    """Mengecek status domain dengan Deteksi IP (lebih akurat) dan Web Scraping."""
     url = f"http://{domain}" 
     
-    # 1. Cek IP Asli
-    try:
-        ip_address = socket.gethostbyname(domain)
-    except socket.gaierror:
-        return "❓ INVALID", "Domain tidak ditemukan (DNS Error)", "N/A"
-    except Exception:
-        ip_address = "N/A"
+    ip_address = "N/A"
 
-    # 2. Web Scraping
+    # --- 1. DETEKSI DNS/IP (Tingkat Paling Akurat) ---
+    try:
+        # Lakukan DNS Lookup untuk mendapatkan IP asli
+        ip_address = socket.gethostbyname(domain)
+        
+        # Cek apakah IP yang didapat adalah IP Pemblokiran
+        if ip_address in BLOCKING_IPS:
+            return "❌ DIBLOKIR! (IP Blokir Ditemukan)", ip_address, "Domain dialihkan ke IP Pemblokiran Umum."
+            
+    except socket.gaierror:
+        # Jika Domain tidak ditemukan, catat error dan keluar.
+        return "❓ INVALID", "Domain tidak ditemukan (DNS Error)", "N/A"
+    except Exception as e:
+        # Jika terjadi error lain, catat dan lanjutkan ke Web Scraping
+        logger.warning(f"Error DNS Lookup untuk {domain}: {e}")
+        pass
+
+    # --- 2. WEB SCRAPING (Jika IP Asli Ditemukan atau DNS Error) ---
     try:
         headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'}
         response = requests.get(url, headers=headers, timeout=15) 
         
-        status_code_info = ""
-        if response.status_code >= 400:
-            status_code_info = f"HTTP Status {response.status_code}. "
+        status_code_info = f"HTTP Status {response.status_code}. " if response.status_code >= 400 else ""
 
         soup = BeautifulSoup(response.content, 'html.parser')
         page_text = soup.get_text().lower() 
 
+        # Cek Kata Kunci Pemblokiran
         for keyword in BLOCKING_KEYWORDS:
             if keyword in page_text:
-                return "❌ DIBLOKIR! (Konten Blokir Ditemukan)", ip_address, f"{status_code_info}Keyword '{keyword}' ditemukan."
+                return "❌ DIBLOKIR! (Konten Blokir Ditemukan)", ip_address, f"{status_code_info}Keyword '{keyword}' ditemukan di halaman."
         
-        return "✅ AMAN (Konten Bersih)", ip_address, f"{status_code_info}Akses berhasil. Konten bersih."
+        # Jika lolos kedua tes (IP bersih & konten bersih)
+        return "✅ AMAN (IP & Konten Bersih)", ip_address, f"{status_code_info}Akses berhasil. Konten bersih."
 
     except requests.exceptions.Timeout:
         return "❓ GAGAL (Timeout)", ip_address, "Akses melebihi batas waktu (sering terjadi jika diblokir keras)"
@@ -79,10 +98,10 @@ def check_blocking_status(domain):
 
 async def start_command(update: Update, context):
     """Mengirim pesan selamat datang ketika perintah /start diterima."""
-    await update.message.reply_text("Halo! Bot Pengecek Domain Anti Nawala (v3.1 - Akurat) sudah aktif. 🛡️\n\nSilakan kirimkan nama domain yang ingin Anda cek (contoh: google.com).")
+    await update.message.reply_text("Halo! Bot Pengecek Domain Anti Nawala (v3.2 - Akurat) sudah aktif. 🛡️\n\nSilakan kirimkan nama domain yang ingin Anda cek (contoh: google.com).")
 
 async def check_domain(update: Update, context):
-    """Merespons pesan teks (domain) dengan hasil pengecekan Web Scraping."""
+    """Merespons pesan teks (domain) dengan hasil pengecekan Akurat."""
     domain = update.message.text.strip().lower().replace("http://", "").replace("https://", "").split("/")[0]
 
     await update.message.reply_text(f"Mengecek status domain: `{domain}`...", parse_mode='Markdown')
@@ -102,7 +121,7 @@ async def check_domain(update: Update, context):
 
 async def send_interval_info(application: Application):
     """Tugas yang dijadwalkan: Mengirim laporan hanya jika ada domain yang diblokir."""
-    logger.info("Menjalankan tugas interval 3 jam (V3.1 - Alerting)...")
+    logger.info("Menjalankan tugas interval 3 jam (V3.2 - Alerting)...")
     
     blocked_results = []
     total_monitored = len(DOMAINS_TO_MONITOR)
@@ -111,51 +130,4 @@ async def send_interval_info(application: Application):
         status, ip, detail = check_blocking_status(domain)
         
         if "❌ DIBLOKIR!" in status:
-            blocked_results.append(f"• 🚨 `{domain}`: **{status}**")
-        
-    if not blocked_results:
-        logger.info(f"Semua {total_monitored} domain AMAN. Tidak ada notifikasi dikirim.")
-        return
-
-    # KODE INI SUDAH DIPERBAIKI (MENGGUNAKAN TRIPLE QUOTES)
-    message_text = f"""*** [ALERT NAWALA DITEMUKAN!] ***
-    
-Ditemukan **{len(blocked_results)}** domain diblokir dari {total_monitored} domain yang dipantau per {datetime.datetime.now().strftime('%d %b %Y %H:%M:%S')}:
-
-{''.join(blocked_results)}
-
-Segera ganti DNS domain-domain ini!"""
-    
-    try:
-        await application.bot.send_message(
-            chat_id=TARGET_CHAT_ID, 
-            text=message_text, 
-            parse_mode='Markdown'
-        )
-        logger.warning(f"ALERT NAWALA berhasil dikirim untuk {len(blocked_results)} domain ke chat ID {TARGET_CHAT_ID}")
-    except Exception as e:
-        logger.error(f"Gagal mengirim ALERT otomatis. Error: {e}")
-
-# --- Fungsi Utama ---
-
-def main():
-    # 1. Buat aplikasi bot
-    application = Application.builder().token(TOKEN).build()
-    
-    # 2. Tambahkan handler
-    application.add_handler(CommandHandler("start", start_command))
-    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, check_domain))
-    
-    # 3. Tambahkan pekerjaan berulang (Penjadwalan)
-    application.job_queue.run_repeating(
-        send_interval_info, 
-        interval=datetime.timedelta(hours=3), 
-        first=0
-    )
-
-    # 4. Mulai bot
-    logger.info("Bot dimulai dalam mode Polling...")
-    application.run_polling(allowed_updates=Update.ALL_TYPES)
-
-if __name__ == '__main__':
-    main()
+            blocked_results.append(f"• 🚨 `{domain}`:
