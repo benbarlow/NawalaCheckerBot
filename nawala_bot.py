@@ -1,5 +1,3 @@
-# nawala_bot.py (Versi 3.0 - Web Scraping untuk Akurasi)
-
 from telegram.ext import Application, CommandHandler, MessageHandler, filters
 from telegram import Update
 import logging
@@ -7,7 +5,7 @@ import socket
 import requests
 from bs4 import BeautifulSoup
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
-from datetime import datetime
+import datetime
 
 # --- Konfigurasi ---
 logging.basicConfig(
@@ -15,17 +13,18 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+# GANTI DUA NILAI DI BAWAH INI:
 # TOKEN BOT ANDA
-TOKEN = "8312452980:AAG4od8CYHuUgvs6M7UryWx8gCkXTcDsXMk" 
+TOKEN = "PASTE TOKEN BOT ANDA DI SINI" 
 
 # Target Chat ID dan Domain Monitor
 # GANTI INI dengan ID Group/Channel Anda (contoh: -1001234567890)
-TARGET_CHAT_ID = "GANTI_DENGAN_ID_CHAT_ANDA" 
+TARGET_CHAT_ID = "PASTE CHAT ID ANDA DI SINI" 
 DOMAINS_TO_MONITOR = [
     "aksesbatikslot.vip",  # Ganti dengan domain yang ingin dipantau
-    "aksesbatikslot.com", 
+    "aksesbatikslot.com",  
     "batikslot-win.fashion", 
-    "aksesbatikslot.org", 
+    "aksesbatikslot.org",  
     "aksesbatikslot.info",
 ]
 
@@ -49,7 +48,7 @@ def check_blocking_status(domain):
     try:
         ip_address = socket.gethostbyname(domain)
     except socket.gaierror:
-        return "❓ INVALID", "Domain tidak ditemukan (DNS Error)"
+        return "❓ INVALID", "Domain tidak ditemukan (DNS Error)", "N/A"
     except Exception:
         ip_address = "N/A"
 
@@ -87,11 +86,11 @@ def check_blocking_status(domain):
 
 # --- Fungsi Handler dan Penjadwalan ---
 
-async def start_command(update, context):
+async def start_command(update: Update, context):
     """Mengirim pesan selamat datang ketika perintah /start diterima."""
     await update.message.reply_text("Halo! Bot Pengecek Domain Anti Nawala (v3.0 - Akurat) sudah aktif. 🛡️\n\nSilakan kirimkan nama domain yang ingin Anda cek (contoh: google.com).")
 
-async def check_domain(update, context):
+async def check_domain(update: Update, context):
     """Merespons pesan teks (domain) dengan hasil pengecekan Web Scraping."""
     domain = update.message.text.strip().lower().replace("http://", "").replace("https://", "").split("/")[0]
 
@@ -132,9 +131,15 @@ async def send_interval_info(application: Application):
         logger.info(f"Semua {total_monitored} domain AMAN. Tidak ada notifikasi dikirim.")
         return
 
-    # Jika ada domain yang diblokir, buat laporan peringatan
-    # Jika ada domain yang diblokir, buat laporan peringatan
-message_text = f"""*** [ALERT NAWALA DITEMUKAN!] ***\n\nDitemukan **{len(blocked_results)}** domain diblokir dari {total_monitored} domain yang dipantau per {datetime.now().strftime('%d %b %Y %H:%M:%S')}:\n\n- {'\n- '.join(blocked_results)}\n\nSegera ganti DNS domain-domain ini!"""
+    # Jika ada domain yang diblokir, buat laporan peringatan (MENGGUNAKAN TRIPLE QUOTES YANG BENAR)
+    message_text = f"""*** [ALERT NAWALA DITEMUKAN!] ***
+    
+Ditemukan **{len(blocked_results)}** domain diblokir dari {total_monitored} domain yang dipantau per {datetime.datetime.now().strftime('%d %b %Y %H:%M:%S')}:
+
+{''.join(blocked_results)}
+
+Segera ganti DNS domain-domain ini!"""
+    
     try:
         # Mengirim pesan peringatan
         await application.bot.send_message(
@@ -146,4 +151,33 @@ message_text = f"""*** [ALERT NAWALA DITEMUKAN!] ***\n\nDitemukan **{len(blocked
     except Exception as e:
         logger.error(f"Gagal mengirim ALERT otomatis. Error: {e}")
 
-# --- END Fungsi Penjadwalan Baru ---
+# --- Fungsi Utama ---
+
+def main():
+    # Cek apakah token dan chat ID sudah diganti
+    if TOKEN == 'PASTE TOKEN BOT ANDA DI SINI' or TARGET_CHAT_ID == 'PASTE CHAT ID ANDA DI SINI':
+        logger.error("Token BOT atau Chat ID belum diatur. Harap isi TOKEN dan TARGET_CHAT_ID.")
+        return
+
+    # 1. Buat aplikasi bot
+    application = Application.builder().token(TOKEN).build()
+    
+    # 2. Tambahkan handler
+    application.add_handler(CommandHandler("start", start_command))
+    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, check_domain))
+    
+    # 3. Tambahkan pekerjaan berulang (Penjadwalan)
+    # Jalankan cek setiap 3 jam (disesuaikan dari kode Anda)
+    application.job_queue.run_repeating(
+        send_interval_info, 
+        interval=datetime.timedelta(hours=3), 
+        first=0
+    )
+
+    # 4. Mulai bot
+    # Gunakan mode polling karena kita deploy di Railway tanpa webhook
+    logger.info("Bot dimulai dalam mode Polling...")
+    application.run_polling(allowed_updates=Update.ALL_TYPES)
+
+if __name__ == '__main__':
+    main()
