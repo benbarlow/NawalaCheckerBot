@@ -32,7 +32,11 @@ BLOCKING_KEYWORDS = [
     "situs diblokir", 
     "nawala unblocker", 
     "pemblokiran",
-    "trustpositif"
+    "trustpositif",
+    "kementerian komunikasi",   # Umumnya ada di header halaman blokir
+    "konten negatif",            # Frasa umum yang digunakan operator ISP
+    "blocked due to content",    # Teks umum jika diblokir oleh CDN
+    "akun anda ditangguhkan"    # Frasa di halaman blokir tertentu
 ]
 
 # IP Pemblokiran Umum di Indonesia (Deteksi Akurat)
