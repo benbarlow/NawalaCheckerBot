@@ -39,7 +39,8 @@ BLOCKING_KEYWORDS = [
 BLOCKING_IPS = [
     '103.1.208.57',  # IP Nawala / TrustPositif lama
     '104.244.48.91', # Salah satu IP umum TrustPositif
-    '15.197.225.128', # <--- IP Pemblokiran BARU dari batikslot.work
+    '15.197.225.128', # IP dari kasus batikslot.work
+    '104.21.67.48',  # IP dari kasus infortpbatik99.vip
     # Anda bisa tambahkan IP pemblokiran umum lainnya di sini
 ]
 
