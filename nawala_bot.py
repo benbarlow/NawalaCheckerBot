@@ -130,4 +130,50 @@ async def send_interval_info(application: Application):
         status, ip, detail = check_blocking_status(domain)
         
         if "❌ DIBLOKIR!" in status:
-            blocked_results.append(f"• 🚨 `{domain}`:
+            blocked_results.append(f"• 🚨 `{domain}`: **{status}**")
+        
+    if not blocked_results:
+        logger.info(f"Semua {total_monitored} domain AMAN. Tidak ada notifikasi dikirim.")
+        return
+
+    # KODE PESAN PERINGATAN (Menggunakan format yang kuat untuk menghindari error copy-paste)
+    message_text = (
+        f"*** [ALERT NAWALA DITEMUKAN!] ***\n\n"
+        f"Ditemukan **{len(blocked_results)}** domain diblokir dari {total_monitored} domain yang dipantau per {datetime.datetime.now().strftime('%d %b %Y %H:%M:%S')}:\n\n"
+        f"{''.join(blocked_results)}\n\n"
+        f"Segera ganti DNS domain-domain ini!"
+    )
+    
+    try:
+        await application.bot.send_message(
+            chat_id=TARGET_CHAT_ID, 
+            text=message_text, 
+            parse_mode='Markdown'
+        )
+        logger.warning(f"ALERT NAWALA berhasil dikirim untuk {len(blocked_results)} domain ke chat ID {TARGET_CHAT_ID}")
+    except Exception as e:
+        logger.error(f"Gagal mengirim ALERT otomatis. Error: {e}")
+
+# --- Fungsi Utama ---
+
+def main():
+    # 1. Buat aplikasi bot
+    application = Application.builder().token(TOKEN).build()
+    
+    # 2. Tambahkan handler
+    application.add_handler(CommandHandler("start", start_command))
+    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, check_domain))
+    
+    # 3. Tambahkan pekerjaan berulang (Penjadwalan)
+    # Jalankan cek setiap 3 jam
+    application.job_queue.run_repeating(
+        send_interval_info, 
+        interval=datetime.timedelta(hours=3), 
+        first=0
+    )
+
+    # 4. Mulai bot
+    application.run_polling(allowed_updates=Update.ALL_TYPES)
+
+if __name__ == '__main__':
+    main()
