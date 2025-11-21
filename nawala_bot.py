@@ -133,13 +133,8 @@ async def send_interval_info(application: Application):
         return
 
     # Jika ada domain yang diblokir, buat laporan peringatan
-    message_text = (
-        f"🚨🚨 **[ ALERT NAWALA DITEMUKAN! ]** 🚨🚨\n"
-        f"Ditemukan **{len(blocked_results)}** domain diblokir dari {total_monitored} domain yang dipantau per {datetime.now().strftime('%d %B %Y %H:%M')}:\n\n"
-        f"{'\n'.join(blocked_results)}\n\n"
-        f"Segera ganti DNS domain-domain ini!"
-    )
-
+    # Jika ada domain yang diblokir, buat laporan peringatan
+message_text = f"""*** [ALERT NAWALA DITEMUKAN!] ***\n\nDitemukan **{len(blocked_results)}** domain diblokir dari {total_monitored} domain yang dipantau per {datetime.now().strftime('%d %b %Y %H:%M:%S')}:\n\n- {'\n- '.join(blocked_results)}\n\nSegera ganti DNS domain-domain ini!"""
     try:
         # Mengirim pesan peringatan
         await application.bot.send_message(
