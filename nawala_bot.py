@@ -23,7 +23,7 @@ DOMAINS_TO_MONITOR = [
     "aksesbatikslot.com",  
     "batikslot-win.fashion", 
     "aksesbatikslot.org",  
-    "aksesbatikslot.info",
+    "batikslot.space",
 ]
 
 # Kata kunci yang menandakan pemblokiran (Web Scraping)
