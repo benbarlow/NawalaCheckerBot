@@ -4,8 +4,8 @@ import socket
 import requests
 from bs4 import BeautifulSoup
 import datetime
-from telegram import Update, error # Tambahkan error di sini
-import asyncio # Tambahkan asyncio
+from telegram import Update, error
+import asyncio
 
 # --- Konfigurasi ---
 logging.basicConfig(
@@ -16,6 +16,11 @@ logger = logging.getLogger(__name__)
 # NILAI KONFIGURASI ANDA (SUDAH DIMASUKKAN)
 TOKEN = "8312452980:AAG4od8CYHuUgvs6M7UryWx8gCkXTcDsXMk"  
 TARGET_CHAT_ID = "7038651668"  
+
+# --- KONFIGURASI PROXY BARU ---
+# CARI dan GANTI dengan Proxy HTTP/HTTPS Publik Indonesia yang stabil.
+# Contoh: 'http://103.23.23.23:8080' atau 'http://username:password@ip:port' (jika berautentikasi)
+PROXY_URL = None # <<< JANGAN LUPA GANTI INI DENGAN ALAMAT PROXY INDONESIA ASLI ANDA! 
 
 # Target Domain untuk dipantau (UBAH JIKA PERLU)
 DOMAINS_TO_MONITOR = [
@@ -51,12 +56,21 @@ BLOCKING_IPS = [
 
 # --- Fungsi Pengecekan Akurat (Deteksi IP & Web Scraping) ---
 def check_blocking_status(domain):
-    """Mengecek status domain dengan Deteksi IP (lebih akurat) dan Web Scraping."""
+    """Mengecek status domain dengan Deteksi IP (lebih akurat) dan Web Scraping melalui Proxy."""
     url = f"http://{domain}"  
     ip_address = "N/A"
+    
+    # KONFIGURASI PROXY
+    proxies = {}
+    if PROXY_URL:
+        proxies = {
+            'http': PROXY_URL,
+            'https': PROXY_URL,
+        }
 
     # --- 1. DETEKSI DNS/IP ---
     try:
+        # DNS lookup tetap dilakukan dari server asli (tidak bisa dipaksa lewat proxy HTTP)
         ip_address = socket.gethostbyname(domain)
         if ip_address in BLOCKING_IPS:
             return "❌ DIBLOKIR! (IP Blokir Ditemukan)", ip_address, "Domain dialihkan ke IP Pemblokiran Umum."
@@ -67,10 +81,13 @@ def check_blocking_status(domain):
         logger.warning(f"Error DNS Lookup untuk {domain}: {e}")
         pass
 
-    # --- 2. WEB SCRAPING ---
+    # --- 2. WEB SCRAPING (MEMAKAI PROXY INDONESIA) ---
     try:
         headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'}
-        response = requests.get(url, headers=headers, timeout=15)  
+        
+        # Requests menggunakan proxy yang dikonfigurasi di atas
+        response = requests.get(url, headers=headers, proxies=proxies, timeout=15)  
+        
         status_code_info = f"HTTP Status {response.status_code}. " if response.status_code >= 400 else ""
         soup = BeautifulSoup(response.content, 'html.parser')
         page_text = soup.get_text().lower()  
@@ -84,15 +101,19 @@ def check_blocking_status(domain):
     except requests.exceptions.Timeout:
         return "❓ GAGAL (Timeout)", ip_address, "Akses melebihi batas waktu (sering terjadi jika diblokir keras)"
     except requests.exceptions.ConnectionError:
-        return "❓ GAGAL (Koneksi Error)", ip_address, "Gagal tersambung (sering terjadi jika diblokir)"
+        # Jika proxy gagal atau koneksi domain gagal, asumsikan itu diblokir
+        if proxies:
+            return "❓ GAGAL (Koneksi Error melalui Proxy)", ip_address, "Proxy gagal terhubung ke domain (kemungkinan diblokir keras)"
+        else:
+             return "❓ GAGAL (Koneksi Error)", ip_address, "Gagal tersambung (sering terjadi jika diblokir)"
     except Exception as e:
         return "🚨 ERROR", ip_address, f"Terjadi Error: {e}"
 
 
-# --- FUNGSI BARU UNTUK MANAJEMEN DOMAIN ---
+# --- FUNGSI DOMAIN MANAGEMENT & CHAT INSTAN (Tidak Berubah) ---
 
 async def dom_add(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Menambahkan domain ke daftar pemantauan."""
+    # ... (kode dom_add tetap sama) ...
     try:
         if not context.args:
             await update.message.reply_text("❌ **Gagal:** Mohon berikan nama domain. Contoh: `/dom_add contohdomain.com`", parse_mode='Markdown')
@@ -117,7 +138,7 @@ async def dom_add(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
 
 async def dom_del(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Menghapus domain dari daftar pemantauan."""
+    # ... (kode dom_del tetap sama) ...
     try:
         if not context.args:
             await update.message.reply_text("❌ **Gagal:** Mohon berikan nama domain yang akan dihapus. Contoh: `/dom_del contohdomain.com`", parse_mode='Markdown')
@@ -142,7 +163,7 @@ async def dom_del(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
 
 async def dom_list(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Menampilkan daftar domain yang saat ini dipantau."""
+    # ... (kode dom_list tetap sama) ...
     if DOMAINS_TO_MONITOR:
         list_items = '\n'.join([f"• `{d}`" for d in sorted(DOMAINS_TO_MONITOR)])
         response_text = (
@@ -155,13 +176,12 @@ async def dom_list(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     await update.message.reply_text(response_text, parse_mode='Markdown')
 
 
-# --- FUNGSI CHAT INSTAN ---
 async def check_domain_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Mengirim daftar domain yang dipantau saat user mengetik /list_domain (alias /dom_list)"""
+    # ... (kode check_domain_command tetap sama) ...
     await dom_list(update, context) 
 
 async def echo_domain(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Merespons pesan chat yang berisi nama domain (tanpa http/s)"""
+    # ... (kode echo_domain tetap sama) ...
     domain = update.message.text.lower().strip()
     
     if '.' in domain and len(domain) > 5 and ' ' not in domain:
@@ -185,10 +205,9 @@ async def echo_domain(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
 
 # --- Fungsi Penjadwalan (Alerting) ---
 async def send_interval_info(context: ContextTypes.DEFAULT_TYPE):
-    """Fungsi yang dipanggil oleh Job Queue: Mengirim laporan AMAN dan DIBLOKIR."""
+    # ... (kode send_interval_info tetap sama) ...
     logger.info("Menjalankan tugas cek domain 2 jam (V3.2 - Cron Optimized Job Queue)...")
     
-    # Ambil instance application dari context
     application = context.application 
     
     blocked_results = []
@@ -238,7 +257,7 @@ async def send_interval_info(context: ContextTypes.DEFAULT_TYPE):
 # --- Fungsi Utama (FINAL: Polling 24/7) ---
 
 def main():
-    """Fungsi utama yang akan menjalankan bot dalam mode Polling (mendengarkan pesan) 24/7."""
+    # ... (kode main tetap sama) ...
     application = Application.builder().token(TOKEN).build()
     
     # 1. MENAMBAH HANDLER CHAT (RESPONS INSTAN)
@@ -250,27 +269,4 @@ def main():
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, echo_domain))
     
     # 2. MENAMBAH PENJADWALAN OTOMATIS (LAPORAN 2 JAM)
-    job_queue = application.job_queue
-    # Interval diatur 7200 detik (2 jam). First=5 akan menjalankan tugas 5 detik setelah bot start.
-    job_queue.run_repeating(send_interval_info, interval=7200, first=5)
-    
-    # 3. MENJALANKAN POLLING (INI YANG HARUS MENJAGA PROSES TETAP HIDUP)
-    logger.info("Bot sekarang menjalankan Polling 24/7 dan Job Queue Aktif.")
-    
-    try:
-        # Menjalankan polling secara sinkron, ini akan memblokir dan menjaga proses tetap hidup
-        application.run_polling(poll_interval=1, timeout=30, allowed_updates=Update.ALL_TYPES)
-    except error.NetworkError as e:
-        logger.error(f"Gagal koneksi ke Telegram API: {e}")
-    except KeyboardInterrupt:
-        logger.info("Bot dihentikan secara manual.")
-    except Exception as e:
-        logger.critical(f"Aplikasi bot mengalami error fatal: {e}")
-
-
-if __name__ == '__main__':
-    # Pastikan main dijalankan dalam asynchronous event loop
-    try:
-        main()
-    except Exception as e:
-        logger.critical(f"Aplikasi bot gagal diinisialisasi: {e}")
+    job_queue
