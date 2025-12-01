@@ -1,9 +1,10 @@
-from telegram.ext import Application
+from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes # Import ContextTypes
 import logging
 import socket
 import requests
 from bs4 import BeautifulSoup
 import datetime
+from telegram import Update # Import Update
 
 # --- Konfigurasi ---
 logging.basicConfig(
@@ -16,6 +17,7 @@ TOKEN = "8312452980:AAG4od8CYHuUgvs6M7UryWx8gCkXTcDsXMk"
 TARGET_CHAT_ID = "7038651668"  
 
 # Target Domain untuk dipantau (UBAH JIKA PERLU)
+# Catatan: Variabel ini akan dimodifikasi saat runtime oleh command /dom_add dan /dom_del
 DOMAINS_TO_MONITOR = [
     "aksesbatikslot.vip",  
     "aksesbatikslot.com",  
@@ -31,66 +33,53 @@ BLOCKING_KEYWORDS = [
     "nawala unblocker",  
     "pemblokiran",
     "trustpositif",
-    "kementerian komunikasi",   # Umumnya ada di header halaman blokir
-    "konten negatif",           # Frasa umum yang digunakan operator ISP
-    "blocked due to content",   # Teks umum jika diblokir oleh CDN
-    "akun anda ditangguhkan"    # Frasa di halaman blokir tertentu
+    "kementerian komunikasi",    
+    "konten negatif",            
+    "blocked due to content",    
+    "akun anda ditangguhkan"    
 ]
 
 # IP Pemblokiran Umum di Indonesia (Deteksi Akurat)
-# CATATAN: PENGHAPUSAN IP BLOKIR TIDAK DISARANKAN. Bot ini menggunakan IP di bawah ini
-# untuk deteksi yang akurat. Jika ada perubahan IP Blokir di masa depan, sebaiknya IP lama dihapus
-# dan IP baru ditambahkan.
 BLOCKING_IPS = [
-    '103.1.208.57',  # IP Nawala / TrustPositif lama
-    '104.244.48.91', # Salah satu IP umum TrustPositif
-    '15.197.225.128', # IP dari kasus batikslot.work
-    '104.21.67.48',  # IP dari kasus infortpbatik99.vip sebelumnya
-    '172.67.213.207',  # <--- IP BARU DITEMUKAN
+    '103.1.208.57', 
+    '104.244.48.91', 
+    '15.197.225.128', 
+    '104.21.67.48',  
+    '172.67.213.207',  
 ]
 
 
 # --- Fungsi Pengecekan Akurat (Deteksi IP & Web Scraping) ---
-
+# ... (Fungsi check_blocking_status tetap sama) ...
 def check_blocking_status(domain):
     """Mengecek status domain dengan Deteksi IP (lebih akurat) dan Web Scraping."""
     url = f"http://{domain}"  
-    
     ip_address = "N/A"
 
-    # --- 1. DETEKSI DNS/IP (Tingkat Paling Akurat) ---
+    # --- 1. DETEKSI DNS/IP ---
     try:
-        # Lakukan DNS Lookup untuk mendapatkan IP asli
         ip_address = socket.gethostbyname(domain)
-        
-        # Cek apakah IP yang didapat adalah IP Pemblokiran
         if ip_address in BLOCKING_IPS:
             return "❌ DIBLOKIR! (IP Blokir Ditemukan)", ip_address, "Domain dialihkan ke IP Pemblokiran Umum."
             
     except socket.gaierror:
-        # Jika Domain tidak ditemukan, catat error dan keluar.
         return "❓ INVALID", "Domain tidak ditemukan (DNS Error)", "N/A"
     except Exception as e:
-        # Jika terjadi error lain, catat dan lanjutkan ke Web Scraping
         logger.warning(f"Error DNS Lookup untuk {domain}: {e}")
         pass
 
-    # --- 2. WEB SCRAPING (Jika IP Asli Ditemukan atau DNS Error) ---
+    # --- 2. WEB SCRAPING ---
     try:
         headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'}
         response = requests.get(url, headers=headers, timeout=15)  
-        
         status_code_info = f"HTTP Status {response.status_code}. " if response.status_code >= 400 else ""
-
         soup = BeautifulSoup(response.content, 'html.parser')
         page_text = soup.get_text().lower()  
 
-        # Cek Kata Kunci Pemblokiran
         for keyword in BLOCKING_KEYWORDS:
             if keyword in page_text:
                 return "❌ DIBLOKIR! (Konten Blokir Ditemukan)", ip_address, f"{status_code_info}Keyword '{keyword}' ditemukan di halaman."
         
-        # Jika lolos kedua tes (IP bersih & konten bersih)
         return "✅ AMAN (IP & Konten Bersih)", ip_address, f"{status_code_info}Akses berhasil. Konten bersih."
 
     except requests.exceptions.Timeout:
@@ -101,10 +90,106 @@ def check_blocking_status(domain):
         return "🚨 ERROR", ip_address, f"Terjadi Error: {e}"
 
 
-# --- Fungsi Penjadwalan (Alerting) yang Dioptimalkan untuk Cron Job ---
+# --- FUNGSI BARU UNTUK MANAJEMEN DOMAIN ---
 
+async def dom_add(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Menambahkan domain ke daftar pemantauan."""
+    try:
+        if not context.args:
+            await update.message.reply_text("❌ **Gagal:** Mohon berikan nama domain. Contoh: `/dom_add contohdomain.com`", parse_mode='Markdown')
+            return
+
+        new_domain = context.args[0].lower().strip()
+        
+        if new_domain not in DOMAINS_TO_MONITOR:
+            DOMAINS_TO_MONITOR.append(new_domain)
+            await update.message.reply_text(
+                f"✅ **Berhasil:** Domain `{new_domain}` telah ditambahkan ke daftar pemantauan.",
+                parse_mode='Markdown'
+            )
+        else:
+            await update.message.reply_text(
+                f"⚠️ **Peringatan:** Domain `{new_domain}` sudah ada di daftar.",
+                parse_mode='Markdown'
+            )
+    except Exception as e:
+        logger.error(f"Error di dom_add: {e}")
+        await update.message.reply_text("🚨 Terjadi error saat memproses permintaan.")
+
+
+async def dom_del(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Menghapus domain dari daftar pemantauan."""
+    try:
+        if not context.args:
+            await update.message.reply_text("❌ **Gagal:** Mohon berikan nama domain yang akan dihapus. Contoh: `/dom_del contohdomain.com`", parse_mode='Markdown')
+            return
+
+        domain_to_delete = context.args[0].lower().strip()
+        
+        if domain_to_delete in DOMAINS_TO_MONITOR:
+            DOMAINS_TO_MONITOR.remove(domain_to_delete)
+            await update.message.reply_text(
+                f"✅ **Berhasil:** Domain `{domain_to_delete}` telah dihapus dari daftar.",
+                parse_mode='Markdown'
+            )
+        else:
+            await update.message.reply_text(
+                f"⚠️ **Peringatan:** Domain `{domain_to_delete}` tidak ditemukan di daftar.",
+                parse_mode='Markdown'
+            )
+    except Exception as e:
+        logger.error(f"Error di dom_del: {e}")
+        await update.message.reply_text("🚨 Terjadi error saat memproses permintaan.")
+
+
+async def dom_list(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Menampilkan daftar domain yang saat ini dipantau."""
+    if DOMAINS_TO_MONITOR:
+        list_items = '\n'.join([f"• `{d}`" for d in sorted(DOMAINS_TO_MONITOR)])
+        response_text = (
+            f"*** [DAFTAR DOMAIN AKTIF DIPANTAU ({len(DOMAINS_TO_MONITOR)})] ***\n\n"
+            f"{list_items}"
+        )
+    else:
+        response_text = "Daftar pemantauan kosong. Tambahkan domain dengan /dom_add."
+        
+    await update.message.reply_text(response_text, parse_mode='Markdown')
+
+
+# --- FUNGSI LAMA UNTUK CHAT INSTAN ---
+# ... (check_domain_command dan echo_domain tetap sama) ...
+async def check_domain_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Mengirim daftar domain yang dipantau saat user mengetik /list_domain (alias /dom_list)"""
+    # Fungsi ini sekarang dialihkan ke dom_list
+    await dom_list(update, context) 
+
+async def echo_domain(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Merespons pesan chat yang berisi nama domain (tanpa http/s)"""
+    domain = update.message.text.lower().strip()
+    
+    if '.' in domain and len(domain) > 5 and ' ' not in domain:
+        if domain.startswith(('http://', 'https://')):
+            domain = domain.split('//')[-1]
+            
+        await update.message.reply_text(f"Mengecek status domain: `{domain}`...", parse_mode='Markdown')
+        
+        status, ip, detail = check_blocking_status(domain)
+        
+        result_text = (
+            f"*** [HASIL CEK DOMAIN] ***\n"
+            f"Domain: `{domain}`\n"
+            f"STATUS: **{status}**\n\n"
+            f"Detail Teknis:\n"
+            f"IP Asli: `{ip}`\n"
+            f"Keterangan: {detail}"
+        )
+        
+        await update.message.reply_text(result_text, parse_mode='Markdown')
+
+# --- Fungsi Penjadwalan (Alerting) ---
+# ... (send_interval_info tetap sama) ...
 async def send_interval_info(application: Application):
-    """Fungsi yang dipanggil oleh Cron Job: Mengirim laporan AMAN dan DIBLOKIR."""
+    """Fungsi yang dipanggil oleh Job Queue: Mengirim laporan AMAN dan DIBLOKIR."""
     logger.info("Menjalankan tugas cek domain 2 jam (V3.2 - Cron Optimized)...")
     
     blocked_results = []
@@ -119,53 +204,4 @@ async def send_interval_info(application: Application):
         else:
             safe_results.append(f"• ✅ `{domain}`: **{status}**")
             
-    # KODE PESAN LAPORAN LENGKAP (AMAN dan DIBLOKIR)
-    header_text = f"*** [LAPORAN OTOMATIS DOMAIN] ***\n"
-    timestamp = f"Waktu Cek: {datetime.datetime.now().strftime('%d %b %Y, %H:%M:%S WIB')}\n"
-    
-    # 1. Bagian yang DIBLOKIR (ALERT)
-    if blocked_results:
-        blocked_section = (
-            f"\n--- ❌ ALERT BLOKIR DITEMUKAN ({len(blocked_results)} Domain) ---\n"
-            f"{'\n'.join(blocked_results)}\n"
-            f"Tindakan: Segera ganti DNS domain-domain ini!"
-        )
-    else:
-        blocked_section = "\n--- ❌ ALERT BLOKIR: TIDAK ADA (Semua OK) ---"
-
-    # 2. Bagian yang AMAN (Laporan Rutin)
-    safe_section = (
-        f"\n--- ✅ STATUS AMAN ({len(safe_results)} Domain) ---\n"
-        f"{'\n'.join(safe_results)}"
-    )
-    
-    message_text = header_text + timestamp + blocked_section + safe_section
-
-    try:
-        await application.bot.send_message(
-            chat_id=TARGET_CHAT_ID, 
-            text=message_text, 
-            parse_mode='Markdown'
-        )
-        logger.info(f"Laporan berhasil dikirim (Total: {total_monitored} domain) ke chat ID {TARGET_CHAT_ID}")
-    except Exception as e:
-        logger.error(f"Gagal mengirim Laporan Otomatis. Error: {e}")
-
-# --- Fungsi Utama (Dioptimalkan untuk Cron Job) ---
-
-def main():
-    """Fungsi utama yang hanya akan memicu pengecekan sekali untuk Cron Job."""
-    application = Application.builder().token(TOKEN).build()
-    
-    # Karena kita menggunakan Cron Job, kita hanya perlu menjalankan fungsi async sekali
-    # tanpa perlu 'run_polling'. Cron yang akan mengulang eksekusi setiap 2 jam.
-    
-    # Jalankan fungsi send_interval_info secara langsung
-    import asyncio
-    asyncio.run(send_interval_info(application))
-    
-    # CATATAN: application.job_queue dan handler (start_command, check_domain)
-    # dihapus karena bot dijalankan setiap 2 jam oleh Cron, bukan 24/7 oleh run_polling.
-
-if __name__ == '__main__':
-    main()
+    header_
