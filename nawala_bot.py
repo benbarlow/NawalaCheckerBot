@@ -1,10 +1,8 @@
-from telegram.ext import Application, CommandHandler, MessageHandler, filters
-from telegram import Update
+from telegram.ext import Application
 import logging
 import socket
 import requests
 from bs4 import BeautifulSoup
-from apscheduler.schedulers.asyncio import AsyncIOScheduler
 import datetime
 
 # --- Konfigurasi ---
@@ -14,32 +12,35 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # NILAI KONFIGURASI ANDA (SUDAH DIMASUKKAN)
-TOKEN = "8312452980:AAG4od8CYHuUgvs6M7UryWx8gCkXTcDsXMk" 
-TARGET_CHAT_ID = "7038651668" 
+TOKEN = "8312452980:AAG4od8CYHuUgvs6M7UryWx8gCkXTcDsXMk"  
+TARGET_CHAT_ID = "7038651668"  
 
 # Target Domain untuk dipantau (UBAH JIKA PERLU)
 DOMAINS_TO_MONITOR = [
     "aksesbatikslot.vip",  
     "aksesbatikslot.com",  
-    "batikslot-win.fashion", 
+    "batikslot-win.fashion",
     "aksesbatikslot.org",  
     "batikslot.space",
 ]
 
 # Kata kunci yang menandakan pemblokiran (Web Scraping)
 BLOCKING_KEYWORDS = [
-    "internet positif", 
-    "situs diblokir", 
-    "nawala unblocker", 
+    "internet positif",  
+    "situs diblokir",  
+    "nawala unblocker",  
     "pemblokiran",
     "trustpositif",
     "kementerian komunikasi",   # Umumnya ada di header halaman blokir
-    "konten negatif",            # Frasa umum yang digunakan operator ISP
-    "blocked due to content",    # Teks umum jika diblokir oleh CDN
+    "konten negatif",           # Frasa umum yang digunakan operator ISP
+    "blocked due to content",   # Teks umum jika diblokir oleh CDN
     "akun anda ditangguhkan"    # Frasa di halaman blokir tertentu
 ]
 
 # IP Pemblokiran Umum di Indonesia (Deteksi Akurat)
+# CATATAN: PENGHAPUSAN IP BLOKIR TIDAK DISARANKAN. Bot ini menggunakan IP di bawah ini
+# untuk deteksi yang akurat. Jika ada perubahan IP Blokir di masa depan, sebaiknya IP lama dihapus
+# dan IP baru ditambahkan.
 BLOCKING_IPS = [
     '103.1.208.57',  # IP Nawala / TrustPositif lama
     '104.244.48.91', # Salah satu IP umum TrustPositif
@@ -53,7 +54,7 @@ BLOCKING_IPS = [
 
 def check_blocking_status(domain):
     """Mengecek status domain dengan Deteksi IP (lebih akurat) dan Web Scraping."""
-    url = f"http://{domain}" 
+    url = f"http://{domain}"  
     
     ip_address = "N/A"
 
@@ -77,12 +78,12 @@ def check_blocking_status(domain):
     # --- 2. WEB SCRAPING (Jika IP Asli Ditemukan atau DNS Error) ---
     try:
         headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'}
-        response = requests.get(url, headers=headers, timeout=15) 
+        response = requests.get(url, headers=headers, timeout=15)  
         
         status_code_info = f"HTTP Status {response.status_code}. " if response.status_code >= 400 else ""
 
         soup = BeautifulSoup(response.content, 'html.parser')
-        page_text = soup.get_text().lower() 
+        page_text = soup.get_text().lower()  
 
         # Cek Kata Kunci Pemblokiran
         for keyword in BLOCKING_KEYWORDS:
@@ -100,86 +101,71 @@ def check_blocking_status(domain):
         return "🚨 ERROR", ip_address, f"Terjadi Error: {e}"
 
 
-# --- Fungsi Handler dan Penjadwalan ---
-
-async def start_command(update: Update, context):
-    """Mengirim pesan selamat datang ketika perintah /start diterima."""
-    await update.message.reply_text("Halo! Bot Pengecek Domain Anti Nawala (v3.2 - Akurat) sudah aktif. 🛡️\n\nSilakan kirimkan nama domain yang ingin Anda cek (contoh: google.com).")
-
-async def check_domain(update: Update, context):
-    """Merespons pesan teks (domain) dengan hasil pengecekan Akurat."""
-    domain = update.message.text.strip().lower().replace("http://", "").replace("https://", "").split("/")[0]
-
-    await update.message.reply_text(f"Mengecek status domain: `{domain}`...", parse_mode='Markdown')
-    
-    status, ip, detail = check_blocking_status(domain)
-    
-    response_text = (
-        f"**[ HASIL CEK DOMAIN ]**\n"
-        f"Domain: `{domain}`\n\n"
-        f"**STATUS: {status}**\n\n"
-        f"Detail Teknis:\nIP Asli: `{ip}`\nKeterangan: {detail}"
-    )
-    
-    await update.message.reply_text(response_text, parse_mode='Markdown')
-
-# --- Fungsi Penjadwalan (Alerting) ---
+# --- Fungsi Penjadwalan (Alerting) yang Dioptimalkan untuk Cron Job ---
 
 async def send_interval_info(application: Application):
-    """Tugas yang dijadwalkan: Mengirim laporan hanya jika ada domain yang diblokir."""
-    logger.info("Menjalankan tugas interval 3 jam (V3.2 - Alerting)...")
+    """Fungsi yang dipanggil oleh Cron Job: Mengirim laporan AMAN dan DIBLOKIR."""
+    logger.info("Menjalankan tugas cek domain 2 jam (V3.2 - Cron Optimized)...")
     
     blocked_results = []
+    safe_results = []
     total_monitored = len(DOMAINS_TO_MONITOR)
 
     for domain in DOMAINS_TO_MONITOR:
         status, ip, detail = check_blocking_status(domain)
         
         if "❌ DIBLOKIR!" in status:
-            blocked_results.append(f"• 🚨 `{domain}`: **{status}**")
-        
-    if not blocked_results:
-        logger.info(f"Semua {total_monitored} domain AMAN. Tidak ada notifikasi dikirim.")
-        return
+            blocked_results.append(f"• 🚨 `{domain}`: **{status}** (IP: `{ip}`)")
+        else:
+            safe_results.append(f"• ✅ `{domain}`: **{status}**")
+            
+    # KODE PESAN LAPORAN LENGKAP (AMAN dan DIBLOKIR)
+    header_text = f"*** [LAPORAN OTOMATIS DOMAIN] ***\n"
+    timestamp = f"Waktu Cek: {datetime.datetime.now().strftime('%d %b %Y, %H:%M:%S WIB')}\n"
+    
+    # 1. Bagian yang DIBLOKIR (ALERT)
+    if blocked_results:
+        blocked_section = (
+            f"\n--- ❌ ALERT BLOKIR DITEMUKAN ({len(blocked_results)} Domain) ---\n"
+            f"{'\n'.join(blocked_results)}\n"
+            f"Tindakan: Segera ganti DNS domain-domain ini!"
+        )
+    else:
+        blocked_section = "\n--- ❌ ALERT BLOKIR: TIDAK ADA (Semua OK) ---"
 
-    # KODE PESAN PERINGATAN (Menggunakan format yang kuat untuk menghindari error copy-paste)
-    message_text = (
-        f"*** [ALERT NAWALA DITEMUKAN!] ***\n\n"
-        f"Ditemukan **{len(blocked_results)}** domain diblokir dari {total_monitored} domain yang dipantau per {datetime.datetime.now().strftime('%d %b %Y %H:%M:%S')}:\n\n"
-        f"{''.join(blocked_results)}\n\n"
-        f"Segera ganti DNS domain-domain ini!"
+    # 2. Bagian yang AMAN (Laporan Rutin)
+    safe_section = (
+        f"\n--- ✅ STATUS AMAN ({len(safe_results)} Domain) ---\n"
+        f"{'\n'.join(safe_results)}"
     )
     
+    message_text = header_text + timestamp + blocked_section + safe_section
+
     try:
         await application.bot.send_message(
             chat_id=TARGET_CHAT_ID, 
             text=message_text, 
             parse_mode='Markdown'
         )
-        logger.warning(f"ALERT NAWALA berhasil dikirim untuk {len(blocked_results)} domain ke chat ID {TARGET_CHAT_ID}")
+        logger.info(f"Laporan berhasil dikirim (Total: {total_monitored} domain) ke chat ID {TARGET_CHAT_ID}")
     except Exception as e:
-        logger.error(f"Gagal mengirim ALERT otomatis. Error: {e}")
+        logger.error(f"Gagal mengirim Laporan Otomatis. Error: {e}")
 
-# --- Fungsi Utama ---
+# --- Fungsi Utama (Dioptimalkan untuk Cron Job) ---
 
 def main():
-    # 1. Buat aplikasi bot
+    """Fungsi utama yang hanya akan memicu pengecekan sekali untuk Cron Job."""
     application = Application.builder().token(TOKEN).build()
     
-    # 2. Tambahkan handler
-    application.add_handler(CommandHandler("start", start_command))
-    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, check_domain))
+    # Karena kita menggunakan Cron Job, kita hanya perlu menjalankan fungsi async sekali
+    # tanpa perlu 'run_polling'. Cron yang akan mengulang eksekusi setiap 2 jam.
     
-    # 3. Tambahkan pekerjaan berulang (Penjadwalan)
-    # Jalankan cek setiap 3 jam
-    application.job_queue.run_repeating(
-        send_interval_info, 
-        interval=datetime.timedelta(hours=3), 
-        first=0
-    )
-
-    # 4. Mulai bot
-    application.run_polling(allowed_updates=Update.ALL_TYPES)
+    # Jalankan fungsi send_interval_info secara langsung
+    import asyncio
+    asyncio.run(send_interval_info(application))
+    
+    # CATATAN: application.job_queue dan handler (start_command, check_domain)
+    # dihapus karena bot dijalankan setiap 2 jam oleh Cron, bukan 24/7 oleh run_polling.
 
 if __name__ == '__main__':
     main()
