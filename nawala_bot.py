@@ -1,10 +1,11 @@
-from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes # Import ContextTypes
+from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
 import logging
 import socket
 import requests
 from bs4 import BeautifulSoup
 import datetime
-from telegram import Update # Import Update
+from telegram import Update, error # Tambahkan error di sini
+import asyncio # Tambahkan asyncio
 
 # --- Konfigurasi ---
 logging.basicConfig(
@@ -17,7 +18,6 @@ TOKEN = "8312452980:AAG4od8CYHuUgvs6M7UryWx8gCkXTcDsXMk"
 TARGET_CHAT_ID = "7038651668"  
 
 # Target Domain untuk dipantau (UBAH JIKA PERLU)
-# Catatan: Variabel ini akan dimodifikasi saat runtime oleh command /dom_add dan /dom_del
 DOMAINS_TO_MONITOR = [
     "aksesbatikslot.vip",  
     "aksesbatikslot.com",  
@@ -41,7 +41,7 @@ BLOCKING_KEYWORDS = [
 
 # IP Pemblokiran Umum di Indonesia (Deteksi Akurat)
 BLOCKING_IPS = [
-    '103.1.208.57', 
+    '103.1.208.57',  
     '104.244.48.91', 
     '15.197.225.128', 
     '104.21.67.48',  
@@ -50,7 +50,6 @@ BLOCKING_IPS = [
 
 
 # --- Fungsi Pengecekan Akurat (Deteksi IP & Web Scraping) ---
-# ... (Fungsi check_blocking_status tetap sama) ...
 def check_blocking_status(domain):
     """Mengecek status domain dengan Deteksi IP (lebih akurat) dan Web Scraping."""
     url = f"http://{domain}"  
@@ -156,11 +155,9 @@ async def dom_list(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     await update.message.reply_text(response_text, parse_mode='Markdown')
 
 
-# --- FUNGSI LAMA UNTUK CHAT INSTAN ---
-# ... (check_domain_command dan echo_domain tetap sama) ...
+# --- FUNGSI CHAT INSTAN ---
 async def check_domain_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Mengirim daftar domain yang dipantau saat user mengetik /list_domain (alias /dom_list)"""
-    # Fungsi ini sekarang dialihkan ke dom_list
     await dom_list(update, context) 
 
 async def echo_domain(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -187,10 +184,12 @@ async def echo_domain(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         await update.message.reply_text(result_text, parse_mode='Markdown')
 
 # --- Fungsi Penjadwalan (Alerting) ---
-# ... (send_interval_info tetap sama) ...
-async def send_interval_info(application: Application):
+async def send_interval_info(context: ContextTypes.DEFAULT_TYPE):
     """Fungsi yang dipanggil oleh Job Queue: Mengirim laporan AMAN dan DIBLOKIR."""
-    logger.info("Menjalankan tugas cek domain 2 jam (V3.2 - Cron Optimized)...")
+    logger.info("Menjalankan tugas cek domain 2 jam (V3.2 - Cron Optimized Job Queue)...")
+    
+    # Ambil instance application dari context
+    application = context.application 
     
     blocked_results = []
     safe_results = []
@@ -204,4 +203,74 @@ async def send_interval_info(application: Application):
         else:
             safe_results.append(f"• ✅ `{domain}`: **{status}**")
             
-    header_
+    header_text = f"*** [LAPORAN OTOMATIS DOMAIN] ***\n"
+    timestamp = f"Waktu Cek: {datetime.datetime.now().strftime('%d %b %Y, %H:%M:%S WIB')}\n"
+    
+    if blocked_results:
+        blocked_section = (
+            f"\n--- ❌ ALERT BLOKIR DITEMUKAN ({len(blocked_results)} Domain) ---\n"
+            f"{'\n'.join(blocked_results)}\n"
+            f"Tindakan: Segera ganti DNS domain-domain ini!"
+        )
+    else:
+        blocked_section = "\n--- ❌ ALERT BLOKIR: TIDAK ADA (Semua OK) ---"
+
+    safe_section = (
+        f"\n--- ✅ STATUS AMAN ({len(safe_results)} Domain) ---\n"
+        f"{'\n'.join(safe_results)}"
+    )
+    
+    message_text = header_text + timestamp + blocked_section + safe_section
+
+    try:
+        await application.bot.send_message(
+            chat_id=TARGET_CHAT_ID, 
+            text=message_text, 
+            parse_mode='Markdown'
+        )
+        logger.info(f"Laporan berhasil dikirim (Total: {total_monitored} domain) ke chat ID {TARGET_CHAT_ID}")
+    except error.BadRequest:
+        logger.error("Gagal mengirim pesan: Chat ID tidak valid atau bot tidak diizinkan.")
+    except Exception as e:
+        logger.error(f"Gagal mengirim Laporan Otomatis. Error: {e}")
+
+
+# --- Fungsi Utama (FINAL: Polling 24/7) ---
+
+def main():
+    """Fungsi utama yang akan menjalankan bot dalam mode Polling (mendengarkan pesan) 24/7."""
+    application = Application.builder().token(TOKEN).build()
+    
+    # 1. MENAMBAH HANDLER CHAT (RESPONS INSTAN)
+    application.add_handler(CommandHandler("list_domain", check_domain_command))
+    application.add_handler(CommandHandler("dom_add", dom_add))
+    application.add_handler(CommandHandler("dom_del", dom_del))
+    application.add_handler(CommandHandler("dom_list", dom_list))
+    
+    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, echo_domain))
+    
+    # 2. MENAMBAH PENJADWALAN OTOMATIS (LAPORAN 2 JAM)
+    job_queue = application.job_queue
+    # Interval diatur 7200 detik (2 jam). First=5 akan menjalankan tugas 5 detik setelah bot start.
+    job_queue.run_repeating(send_interval_info, interval=7200, first=5)
+    
+    # 3. MENJALANKAN POLLING (INI YANG HARUS MENJAGA PROSES TETAP HIDUP)
+    logger.info("Bot sekarang menjalankan Polling 24/7 dan Job Queue Aktif.")
+    
+    try:
+        # Menjalankan polling secara sinkron, ini akan memblokir dan menjaga proses tetap hidup
+        application.run_polling(poll_interval=1, timeout=30, allowed_updates=Update.ALL_TYPES)
+    except error.NetworkError as e:
+        logger.error(f"Gagal koneksi ke Telegram API: {e}")
+    except KeyboardInterrupt:
+        logger.info("Bot dihentikan secara manual.")
+    except Exception as e:
+        logger.critical(f"Aplikasi bot mengalami error fatal: {e}")
+
+
+if __name__ == '__main__':
+    # Pastikan main dijalankan dalam asynchronous event loop
+    try:
+        main()
+    except Exception as e:
+        logger.critical(f"Aplikasi bot gagal diinisialisasi: {e}")
