@@ -33,25 +33,11 @@ DOMAINS_TO_MONITOR = [
 
 # Kata kunci yang menandakan pemblokiran (Web Scraping)
 BLOCKING_KEYWORDS = [
-    "internet positif",  
-    "situs diblokir",  
-    "nawala unblocker",  
-    "pemblokiran",
-    "trustpositif",
-    "kementerian komunikasi",    
-    "konten negatif",            
-    "blocked due to content",    
-    "akun anda ditangguhkan"    
+    "internet positif",    
 ]
 
 # IP Pemblokiran Umum di Indonesia (Deteksi Akurat)
-BLOCKING_IPS = [
-    '103.1.208.57',  
-    '104.244.48.91', 
-    '15.197.225.128', 
-    '104.21.67.48',  
-    '172.67.213.207',  
-]
+BLOCKING_IPS = []
 
 
 # --- Fungsi Pengecekan Akurat (Deteksi IP & Web Scraping) ---
