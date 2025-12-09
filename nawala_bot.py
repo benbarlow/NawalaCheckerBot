@@ -20,7 +20,7 @@ TARGET_CHAT_ID = "7038651668"
 
 # --- KONFIGURASI PROXY BARU ---
 # Status saat ini: NON-AKTIF untuk menghindari crash.
-PROXY_URL = 'http://16.78.93.162:761' # <<< JANGAN UBAH INI DULU
+PROXY_URL = None # <<< JANGAN UBAH INI DULU
 
 # Target Domain untuk dipantau (UBAH JIKA PERLU)
 DOMAINS_TO_MONITOR = [
