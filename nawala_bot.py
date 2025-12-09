@@ -20,7 +20,7 @@ TARGET_CHAT_ID = "7038651668"
 # --- KONFIGURASI PROXY BARU ---
 # CARI dan GANTI dengan Proxy HTTP/HTTPS Publik Indonesia yang stabil.
 # Contoh: 'http://103.23.23.23:8080' atau 'http://username:password@ip:port' (jika berautentikasi)
-PROXY_URL = 'http://202.146.200.102:8080' # <<< JANGAN LUPA GANTI INI DENGAN ALAMAT PROXY INDONESIA ASLI ANDA! 
+PROXY_URL = None # <<< JANGAN LUPA GANTI INI DENGAN ALAMAT PROXY INDONESIA ASLI ANDA! 
 
 # Target Domain untuk dipantau (UBAH JIKA PERLU)
 DOMAINS_TO_MONITOR = [
