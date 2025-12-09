@@ -15,7 +15,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # NILAI KONFIGURASI ANDA (SUDAH DIMASUKKAN)
-TOKEN = "8312452980:AAG4od8CYHuUgvs6M7UryWx8gCkXTcDsXMk"  
+TOKEN = "8312452980:AAHjQa_m6HPT5-MtLUxkxlivUh7ZxeGOubg"  
 TARGET_CHAT_ID = "7038651668"  
 
 # --- KONFIGURASI PROXY BARU ---
