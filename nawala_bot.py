@@ -20,7 +20,7 @@ TARGET_CHAT_ID = "7038651668"
 
 # --- KONFIGURASI PROXY BARU ---
 # Status saat ini: NON-AKTIF untuk menghindari crash.
-PROXY_URL = None # <<< JANGAN UBAH INI DULU
+PROXY_URL = "socks5://123.45.67.89:1080" # <<< JANGAN UBAH INI DULU
 
 # Target Domain untuk dipantau (UBAH JIKA PERLU)
 DOMAINS_TO_MONITOR = [
